@@ -1,4 +1,5 @@
 import logging
+import os
 import tempfile
 import typing
 import urllib.parse
@@ -669,12 +670,19 @@ async def download_agent_file(
     file_name = f"agent_{graph_data.id}_v{graph_data.version or 'latest'}.json"
 
     # Sending graph as a stream (similar to marketplace v1)
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False
-    ) as tmp_file:
+    tmp_file = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+    try:
         tmp_file.write(backend.util.json.dumps(graph_data))
         tmp_file.flush()
+    finally:
+        tmp_file.close()
 
-        return fastapi.responses.FileResponse(
-            tmp_file.name, filename=file_name, media_type="application/json"
-        )
+    background_tasks = fastapi.BackgroundTasks()
+    background_tasks.add_task(os.unlink, tmp_file.name)
+
+    return fastapi.responses.FileResponse(
+        tmp_file.name,
+        filename=file_name,
+        media_type="application/json",
+        background=background_tasks,
+    )
